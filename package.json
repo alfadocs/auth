@@ -1,6 +1,6 @@
 {
   "name": "@alfadocs/auth",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Bridgeable Alfadocs auth core with infrastructure adapters",
   "type": "module",
   "main": "dist/index.js",
@@ -45,7 +45,7 @@
     "supabase"
   ],
   "author": "AlfaDocs",
-  "license": "MIT",
+  "license": "BUSL-1.1",
   "peerDependencies": {
     "react": "^18.2.0 || ^19.0.0"
   },
