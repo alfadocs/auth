@@ -11,6 +11,7 @@
     "moduleResolution": "NodeNext",
     "lib": ["ES2022", "WebWorker"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/react"]
 }
 

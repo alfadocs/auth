@@ -97,6 +97,34 @@ const auth = createAlfadocsAuth({
 - `GET /session` -> session check
 - `POST /logout` -> logout (origin-checked, cookie clear + session invalidation)
 
+## React binding (`@alfadocs/auth/react`)
+
+The core above is **server-side** — it holds the client secret, runs the PKCE code-exchange, and sets an httpOnly session cookie. None of that can run in the browser. Mount `auth.handleRequest` behind a route (an Edge/serverless function or any HTTP handler) at, say, `/api/auth/*`, then drive it from React with the binding:
+
+```tsx
+import { AlfadocsAuthProvider, useAlfadocsAuth } from "@alfadocs/auth/react";
+
+// Wrap your app once. `basePath` is where the BFF handler is mounted.
+<AlfadocsAuthProvider basePath="/api/auth">
+  <App />
+</AlfadocsAuthProvider>;
+
+// Anywhere inside:
+function Account() {
+  const { status, user, connect, signOut } = useAlfadocsAuth();
+  if (status === "loading") return null;
+  if (status !== "authenticated") return <button onClick={connect}>Connect with AlfaDocs</button>;
+  return <button onClick={signOut}>Sign out {String(user?.email ?? "")}</button>;
+}
+```
+
+`useAlfadocsAuth()` returns `{ status, user, error, isAuthenticated, connect, signOut, refresh }`:
+- `connect()` — full-page navigation to `{basePath}/login` (the OAuth redirect can't be an XHR).
+- `signOut()` — `POST {basePath}/logout`, then re-reads the session.
+- `refresh()` — re-fetches `{basePath}/session`.
+
+All requests are sent with `credentials: "include"` so the httpOnly session cookie is included (works same-origin, and cross-origin when the BFF enables credentialed CORS). The binding has **no** dependency on the server core and never sees the client secret — it only talks to the four endpoints above. `react` is an optional peer dependency: consumers using only the server core don't need it installed.
+
 ## Host integration checklist (Supabase Edge + BFF)
 
 End-to-end notes for running **`createAlfadocsAuth`** on **Supabase Edge Functions** behind a SPA that talks to **cookie-authenticated BFFs**. Adapt names (function slug, env vars, flags) to your stack.
