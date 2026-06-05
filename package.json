@@ -1,6 +1,6 @@
 {
   "name": "@alfadocs/auth",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Bridgeable Alfadocs auth core with infrastructure adapters",
   "type": "module",
   "main": "dist/index.js",

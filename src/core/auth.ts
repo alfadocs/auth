@@ -139,7 +139,9 @@ export function createAlfadocsAuth(config: AlfadocsAuthConfig): AlfadocsAuth {
       throw new Error("Profile does not contain `userId`");
     }
 
-    const existing = await config.storage.getUser(userId);
+    // External-id lookup: `userId` here is the AlfaDocs user id from the OAuth
+    // profile, not the bridge's storage id (that one is used on the session path).
+    const existing = await config.storage.getUserByExternalId(userId);
     if (!existing) {
       return config.storage.createUser(userId, username, authData);
     }

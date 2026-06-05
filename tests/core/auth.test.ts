@@ -12,6 +12,11 @@ function createStorageMock(): AuthStorage {
     async getUser(userId: string): Promise<StoredUser | null> {
       return users.get(userId) ?? null;
     },
+    // In-memory mock keys users by their canonical (external) id, so both
+    // lookups resolve through the same map — mirrors the supabase bridge.
+    async getUserByExternalId(externalId: string): Promise<StoredUser | null> {
+      return users.get(externalId) ?? null;
+    },
     async createUser(
       userId: string,
       username: string,
@@ -225,6 +230,83 @@ describe("createAlfadocsAuth", () => {
     expect(tp.get("scope")).toBe("patient:list");
     expect(tp.get("oauth_scope_list")).toBe("['patient:list']");
     expect(tp.get("grant_type")).toBe("authorization_code");
+  });
+
+  it("resolves users via getUserByExternalId on callback and getUser on session — split id spaces", async () => {
+    // Storage with SEPARATE id spaces: external (AlfaDocs) ids map to internal
+    // row ids. A single getUser serving both paths breaks this shape (0.4.x bug).
+    const byInternalId = new Map<string, StoredUser>();
+    const byExternalId = new Map<string, StoredUser>();
+    const sessions = new Map<string, StoredSession>();
+    const storage: AuthStorage = {
+      async getUser(userId) {
+        return byInternalId.get(userId) ?? null;
+      },
+      async getUserByExternalId(externalId) {
+        return byExternalId.get(externalId) ?? null;
+      },
+      async createUser(externalId, username, authData) {
+        const user = { id: `row-${externalId}`, username, authData };
+        byInternalId.set(user.id, user);
+        byExternalId.set(externalId, user);
+        return user;
+      },
+      async updateUser(userId, fields) {
+        const existing = byInternalId.get(userId);
+        if (!existing) throw new Error("missing user");
+        const updated = { ...existing, ...fields, authData: fields.authData ?? existing.authData };
+        byInternalId.set(userId, updated);
+        return updated;
+      },
+      async createSession(userId) {
+        const session = { userId, cookieValue: `cookie-${userId}`, expiresAt: Date.now() + 60_000 };
+        sessions.set(session.cookieValue, session);
+        return session;
+      },
+      async getSession(cookieValue) {
+        return sessions.get(cookieValue) ?? null;
+      },
+      async deleteSession(cookieValue) {
+        sessions.delete(cookieValue);
+      },
+    };
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/oauth2/token")) {
+        return new Response(JSON.stringify({ access_token: "tok", expires_in: 3600 }), { status: 200 });
+      }
+      if (url.endsWith("/api/v1/me")) {
+        return new Response(JSON.stringify({ userId: "alfa-7", email: "doc@studio.it" }), { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const auth = createAlfadocsAuth({
+      clientId: "cid",
+      clientSecret: "secret",
+      redirectUri: "https://fn.example/auth",
+      appOrigin: "https://app.example",
+      storage,
+      baseUrl: "https://alfadocs.example",
+    });
+
+    const preauth = encodePreAuth({ codeVerifier: "verifier", state: "state-1" });
+    const callbackRes = await auth.handleCallback(
+      new Request("https://fn.example/auth?code=abc&state=state-1", {
+        headers: { cookie: `alfadocs_preauth=${preauth}` },
+      }),
+    );
+    expect(callbackRes.status).toBe(302);
+
+    // The session cookie round-trips through the INTERNAL id space.
+    const sessionRes = await auth.handleRequest(
+      new Request("https://fn.example/session", {
+        headers: { cookie: "alfadocs_session=cookie-row-alfa-7" },
+      }),
+    );
+    await expect(sessionRes.json()).resolves.toMatchObject({ authenticated: true });
   });
 
   it("requires matching origin for POST logout and deletes persisted session", async () => {

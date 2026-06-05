@@ -140,6 +140,19 @@ export function createSupabaseStorage(config: SupabaseStorageConfig): AuthStorag
       return { id: row.id, username: row.username, authData: row.auth_data ?? {} };
     },
 
+    // This bridge uses the external (AlfaDocs) id AS the storage id, so the
+    // external-id lookup is the same query. Bridges with separate id columns
+    // must query their external-id column here instead.
+    async getUserByExternalId(externalId: string): Promise<StoredUser | null> {
+      const data = await postgrest<Array<{ id: string; username: string; auth_data: Record<string, unknown> }>>(
+        `${USERS_TABLE}?${appIdEq(appId)}&id=eq.${encodeURIComponent(externalId)}&select=id,username,auth_data&limit=1`,
+        { method: "GET", headers: { Prefer: "" } },
+      );
+      const row = data[0];
+      if (!row) return null;
+      return { id: row.id, username: row.username, authData: row.auth_data ?? {} };
+    },
+
     // Keep identity explicit: caller chooses the stable user id persisted in storage.
     async createUser(
       userId: string,

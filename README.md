@@ -217,9 +217,18 @@ Add **`scopes`** on **`createAlfadocsAuth`** only if your product calls AlfaDocs
 ## Storage interfaces
 
 The core is now decoupled from infrastructure via split interfaces:
-- `UserStore` (`getUser`, `createUser(userId, username, authData)`, `updateUser`)
+- `UserStore` (`getUser`, `getUserByExternalId`, `createUser(userId, username, authData)`, `updateUser`)
 - `SessionStore` (`createSession`, `getSession`, `deleteSession`)
 - `AuthStorage` (`UserStore & SessionStore`)
+
+**The two lookup paths** (split in 0.5.0): the OAuth **callback** resolves users
+by the **external** (AlfaDocs) id via `getUserByExternalId`; the **session** path
+resolves them by the **storage** id (`StoredUser.id`, the value your
+`createUser`/`getSession` round-trip) via `getUser`. If your bridge uses the
+external id as its storage id (like `createSupabaseStorage`), implement both
+identically; if it keeps separate columns, query the matching column in each.
+Before 0.5.0 a single `getUser` served both paths, which silently broke bridges
+with separate id spaces.
 
 The bridge only speaks **PostgREST** (`fetch`), so it runs on **Supabase Edge**, Deno Deploy, Bun, Node, and Cloudflare Workers without a `postgres` driver.
 
